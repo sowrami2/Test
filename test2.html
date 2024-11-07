@@ -1,0 +1,493 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Enhanced Rollercoaster Animation</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: skyblue;
+        }
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Set canvas size to window size
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        let trackPath = [];
+        let supports = [];
+        let trainPosition = 0;
+        let rightPressed = false;
+        let leftPressed = false;
+        let velocity = 0;
+
+        const trainLength = 5;
+        const carSpacing = 40;
+
+        // Variables for headlight blinking
+        let headlightOn = false;
+        let lastBlinkTime = 0;
+        const blinkInterval = 500; // milliseconds
+
+        // Background variables
+        let clouds = [];
+        let stars = [];
+
+        const cycleDuration = 60 * 1000; // 60 seconds for full cycle
+        const startTime = Date.now();
+        let cycleTime = 0;
+        let t = 0;
+
+        // Define sky and ground colors
+        const skyColorDay = { r:135, g:206, b:235 }; // skyblue #87CEEB
+        const skyColorNight = { r:25, g:25, b:112 }; // midnight blue #191970
+        const groundColorDay = { r:34, g:139, b:34 }; // forest green #228B22
+        const groundColorNight = { r:0, g:100, b:0 }; // dark green #006400
+
+        // Function to interpolate between two colors
+        function lerpColor(color1, color2, t) {
+            const r = Math.round(color1.r + (color2.r - color1.r) * t);
+            const g = Math.round(color1.g + (color2.g - color1.g) * t);
+            const b = Math.round(color1.b + (color2.b - color1.b) * t);
+            return `rgb(${r}, ${g}, ${b})`;
+        }
+
+        // Initialize background elements
+        function initBackground() {
+            // Initialize clouds
+            clouds = [];
+            const numClouds = Math.floor(canvas.width / 200);
+            for(let i=0; i<numClouds; i++) {
+                const cloud = {
+                    x: Math.random() * canvas.width,
+                    y: 50 + Math.random() * (canvas.height * 0.3),
+                    size: 50 + Math.random() * 50
+                };
+                clouds.push(cloud);
+            }
+
+            // Initialize stars
+            stars = [];
+            const numStars = 100;
+            for(let i=0; i<numStars; i++) {
+                const star = {
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * (canvas.height * 0.5),
+                    radius: 1 + Math.random() * 2
+                };
+                stars.push(star);
+            }
+        }
+
+        // Draw clouds
+        function drawCloud(cloud) {
+            ctx.beginPath();
+            ctx.arc(cloud.x, cloud.y, cloud.size * 0.3, Math.PI * 0.5, Math.PI * 1.5);
+            ctx.arc(cloud.x + cloud.size * 0.25, cloud.y - cloud.size * 0.3, cloud.size * 0.3, Math.PI, Math.PI * 1.85);
+            ctx.arc(cloud.x + cloud.size * 0.5, cloud.y - cloud.size * 0.1, cloud.size * 0.3, Math.PI * 1.37, Math.PI * 1.91);
+            ctx.arc(cloud.x + cloud.size * 0.75, cloud.y, cloud.size * 0.3, Math.PI * 1.5, Math.PI * 0.5);
+            ctx.closePath();
+            ctx.fill();
+        }
+
+        // Draw background with day/night cycle
+        function drawBackground(t) {
+            // Interpolate sky and ground colors
+            const skyColor = lerpColor(skyColorNight, skyColorDay, t);
+            const groundColor = lerpColor(groundColorNight, groundColorDay, t);
+
+            // Draw sky
+            ctx.fillStyle = skyColor;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw stars with opacity (1 - t)
+            const starOpacity = Math.min(1 - t, 1);
+            if(starOpacity > 0){
+                ctx.globalAlpha = starOpacity * 0.7; // adjust max opacity
+                ctx.fillStyle = 'white';
+                stars.forEach(star => {
+                    ctx.beginPath();
+                    ctx.arc(star.x, star.y, star.radius, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+                ctx.globalAlpha = 1.0;
+            }
+
+            // Draw clouds with opacity t
+            const cloudOpacity = t;
+            if(cloudOpacity > 0){
+                ctx.fillStyle = `rgba(255, 255, 255, ${cloudOpacity})`;
+                clouds.forEach(cloud => {
+                    drawCloud(cloud);
+                });
+            }
+
+            // Draw ground
+            ctx.fillStyle = groundColor;
+            ctx.fillRect(0, canvas.height - 50, canvas.width, 50);
+        }
+
+        // Initialize track and support beams
+        function initTrack() {
+            trackPath = [];
+            supports = [];
+            const segments = [
+                { type: 'climb', length: canvas.width * 0.1, height: canvas.height * 0.3 },
+                { type: 'drop', length: canvas.width * 0.1, height: canvas.height * 0.3 },
+                { type: 'climb', length: canvas.width * 0.08, height: canvas.height * 0.25 },
+                { type: 'drop', length: canvas.width * 0.08, height: canvas.height * 0.25 },
+                { type: 'climb', length: canvas.width * 0.12, height: canvas.height * 0.35 },
+                { type: 'drop', length: canvas.width * 0.12, height: canvas.height * 0.35 },
+                { type: 'loop', radius: canvas.height * 0.2 },
+                { type: 'climb', length: canvas.width * 0.15, height: canvas.height * 0.4 },
+                { type: 'drop', length: canvas.width * 0.15, height: canvas.height * 0.4 },
+                { type: 'steep_drop', length: canvas.width * 0.1, height: canvas.height * 0.5 },
+                { type: 'climb', length: canvas.width * 0.1, height: canvas.height * 0.3 },
+                { type: 'loop', radius: canvas.height * 0.15 },
+                { type: 'drop', length: canvas.width * 0.05, height: canvas.height * 0.2 },
+                { type: 'flat', length: canvas.width * 0.3 }
+            ];
+
+            let x = 0;
+            let y = canvas.height * 0.6;
+
+            let supportInterval = 100;
+            let cumulativeLength = 0;
+            let prevPoint = {x: x, y: y};
+
+            segments.forEach(segment => {
+                switch(segment.type){
+                    case 'climb':
+                        for(let i=0; i<=segment.length; i+=2){
+                            const newX = x + i;
+                            const newY = y - (i / segment.length) * segment.height;
+                            const newPoint = {x:newX, y:newY};
+                            // Compute distance
+                            const dx = newPoint.x - prevPoint.x;
+                            const dy = newPoint.y - prevPoint.y;
+                            const dist = Math.sqrt(dx * dx + dy * dy);
+                            cumulativeLength += dist;
+                            if(cumulativeLength >= supportInterval){
+                                supports.push({...newPoint});
+                                cumulativeLength = 0;
+                            }
+                            trackPath.push(newPoint);
+                            prevPoint = newPoint;
+                        }
+                        x += segment.length;
+                        y -= segment.height;
+                        break;
+                    case 'drop':
+                        for(let i=0; i<=segment.length; i+=2){
+                            const newX = x + i;
+                            const newY = y + (i / segment.length) * segment.height;
+                            const newPoint = {x:newX, y:newY};
+                            // Compute distance
+                            const dx = newPoint.x - prevPoint.x;
+                            const dy = newPoint.y - prevPoint.y;
+                            const dist = Math.sqrt(dx * dx + dy * dy);
+                            cumulativeLength += dist;
+                            if(cumulativeLength >= supportInterval){
+                                supports.push({...newPoint});
+                                cumulativeLength = 0;
+                            }
+                            trackPath.push(newPoint);
+                            prevPoint = newPoint;
+                        }
+                        x += segment.length;
+                        y += segment.height;
+                        break;
+                    case 'steep_drop':
+                        for(let i=0; i<=segment.length; i+=2){
+                            const newX = x + i;
+                            const newY = y + (i / segment.length) * segment.height * 1.5;
+                            const newPoint = {x:newX, y:newY};
+                            // Compute distance
+                            const dx = newPoint.x - prevPoint.x;
+                            const dy = newPoint.y - prevPoint.y;
+                            const dist = Math.sqrt(dx * dx + dy * dy);
+                            cumulativeLength += dist;
+                            if(cumulativeLength >= supportInterval){
+                                supports.push({...newPoint});
+                                cumulativeLength = 0;
+                            }
+                            trackPath.push(newPoint);
+                            prevPoint = newPoint;
+                        }
+                        x += segment.length;
+                        y += segment.height * 1.5;
+                        break;
+                    case 'loop':
+                        const loopRadius = segment.radius;
+                        for(let angleStep=0; angleStep<=Math.PI * 2; angleStep +=0.05){
+                            const loopX = x + loopRadius * Math.sin(angleStep);
+                            const loopY = y - loopRadius * Math.cos(angleStep);
+                            const newPoint = {x: loopX, y: loopY};
+                            const dx = newPoint.x - prevPoint.x;
+                            const dy = newPoint.y - prevPoint.y;
+                            const dist = Math.sqrt(dx * dx + dy * dy);
+                            cumulativeLength += dist;
+                            if(cumulativeLength >= supportInterval){
+                                supports.push({...newPoint});
+                                cumulativeLength = 0;
+                            }
+                            trackPath.push(newPoint);
+                            prevPoint = newPoint;
+                        }
+                        x += loopRadius * 2;
+                        break;
+                    case 'flat':
+                        for(let i=0; i<=segment.length; i+=2){
+                            const newX = x + i;
+                            const newY = y;
+                            const newPoint = {x:newX, y:newY};
+                            const dx = newPoint.x - prevPoint.x;
+                            const dy = newPoint.y - prevPoint.y;
+                            const dist = Math.sqrt(dx * dx + dy * dy);
+                            cumulativeLength += dist;
+                            if(cumulativeLength >= supportInterval){
+                                supports.push({...newPoint});
+                                cumulativeLength = 0;
+                            }
+                            trackPath.push(newPoint);
+                            prevPoint = newPoint;
+                        }
+                        x += segment.length;
+                        y += 0; // remains the same
+                        break;
+                }
+            });
+
+            // Ensure supports are within bounds
+            supports = supports.filter(point => point.y > 50 && point.y < canvas.height - 100);
+        }
+
+        // Draw support beams
+        function drawSupportBeams() {
+            ctx.strokeStyle = 'gray';
+            ctx.lineWidth = 2;
+            supports.forEach(support => {
+                ctx.beginPath();
+                ctx.moveTo(support.x, support.y);
+                ctx.lineTo(support.x, canvas.height - 50);
+                ctx.stroke();
+            });
+        }
+
+        // Draw the train
+        function drawTrain(position, headlightOn) {
+            for(let i=0; i<trainLength; i++) {
+                let carPosition = position - i * (carSpacing / 2);
+
+                if(carPosition < 0) carPosition = 0;
+                if(carPosition > trackPath.length - 1) carPosition = trackPath.length -1;
+
+                const index = Math.floor(carPosition);
+                const trainX = trackPath[index].x;
+                const trainY = trackPath[index].y;
+
+                let angle = 0;
+                if(index < trackPath.length -1){
+                    const dx = trackPath[index +1].x - trackPath[index].x;
+                    const dy = trackPath[index +1].y - trackPath[index].y;
+                    angle = Math.atan2(dy, dx);
+                }
+                else if(index >0){
+                    const dx = trackPath[index].x - trackPath[index -1].x;
+                    const dy = trackPath[index].y - trackPath[index -1].y;
+                    angle = Math.atan2(dy, dx);
+                }
+
+                ctx.save();
+                ctx.translate(trainX, trainY);
+                ctx.rotate(angle);
+
+                if(i ===0){ // front car
+                    // Draw beam first
+                    if(headlightOn){
+                        let beamLength = 150;
+                        let spreadAngle = Math.PI / 6; // 30 degrees
+
+                        const beamApexX = 30; // front of car
+                        const beamApexY = 0;
+
+                        const leftAngle = -spreadAngle;
+                        const rightAngle = spreadAngle;
+
+                        const leftX = beamApexX + beamLength * Math.cos(leftAngle);
+                        const leftY = beamApexY + beamLength * Math.sin(leftAngle);
+
+                        const rightX = beamApexX + beamLength * Math.cos(rightAngle);
+                        const rightY = beamApexY + beamLength * Math.sin(rightAngle);
+
+                        // Create gradient
+                        let gradient = ctx.createRadialGradient(beamApexX, beamApexY, 0, beamApexX, beamApexY, beamLength);
+                        gradient.addColorStop(0, 'rgba(255, 255, 0, 0.5)');
+                        gradient.addColorStop(1, 'rgba(255, 255, 0, 0)');
+
+                        ctx.beginPath();
+                        ctx.moveTo(beamApexX, beamApexY);
+                        ctx.lineTo(leftX, leftY);
+                        ctx.lineTo(rightX, rightY);
+                        ctx.closePath();
+                        ctx.fillStyle = gradient;
+                        ctx.fill();
+                    }
+
+                    // Draw front car
+                    ctx.fillStyle = 'red';
+                    ctx.beginPath();
+                    ctx.moveTo(-20, -10);
+                    ctx.lineTo(20, -10);
+                    ctx.lineTo(30, 0); // longer nose
+                    ctx.lineTo(20, 10);
+                    ctx.lineTo(-20,10);
+                    ctx.closePath();
+                    ctx.fill();
+
+                }
+                else if(i === trainLength -1){ // back car
+                    ctx.fillStyle = 'red';
+                    ctx.beginPath();
+                    ctx.moveTo(-20, -10);
+                    ctx.lineTo(20, -10);
+                    ctx.lineTo(20, 10);
+                    ctx.lineTo(-20, 10);
+                    ctx.quadraticCurveTo(-30, 0, -20, -10);
+                    ctx.closePath();
+                    ctx.fill();
+                }
+                else{ // middle cars
+                    ctx.fillStyle = 'red';
+                    ctx.fillRect(-20, -10, 40, 20);
+                }
+
+                // Draw wheels
+                ctx.fillStyle = 'black';
+                ctx.beginPath();
+                ctx.arc(-15, 10, 5, 0, Math.PI * 2);
+                ctx.arc(15, 10, 5, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.restore();
+            }
+        }
+
+        // Initialize the rollercoaster
+        function init() {
+            initBackground();
+            initTrack();
+        }
+
+        init();
+
+        // Add event listeners for controls
+        document.addEventListener('keydown', keyDownHandler);
+        document.addEventListener('keyup', keyUpHandler);
+
+        function keyDownHandler(e) {
+            if(e.code === 'ArrowRight') rightPressed = true;
+            if(e.code === 'ArrowLeft') leftPressed = true;
+        }
+
+        function keyUpHandler(e) {
+            if(e.code === 'ArrowRight') rightPressed = false;
+            if(e.code === 'ArrowLeft') leftPressed = false;
+        }
+
+        // Draw the entire scene
+        function draw() {
+            // Update cycleTime and t
+            const now = Date.now();
+            const elapsed = now - startTime;
+            cycleTime = (elapsed % cycleDuration) / cycleDuration;
+            t = (Math.sin(cycleTime * 2 * Math.PI - Math.PI / 2) + 1) / 2;
+
+            // Draw background
+            drawBackground(t);
+
+            // Draw support beams
+            drawSupportBeams();
+
+            // Draw the track
+            ctx.strokeStyle = 'black';
+            ctx.lineWidth = 5;
+            ctx.beginPath();
+            if(trackPath.length > 0){
+                ctx.moveTo(trackPath[0].x, trackPath[0].y);
+                for(let i=1; i<trackPath.length; i++) {
+                    ctx.lineTo(trackPath[i].x, trackPath[i].y);
+                }
+                ctx.stroke();
+            }
+
+            // Update velocity based on input
+            if(rightPressed) velocity += 0.2;
+            if(leftPressed) velocity -= 0.2;
+
+            // Apply friction
+            velocity *= 0.98;
+
+            // Limit velocity
+            if(velocity > 8) velocity = 8;
+            if(velocity < -8) velocity = -8;
+
+            // Update train position
+            trainPosition += velocity;
+
+            // Keep train position within trackPath bounds
+            if(trainPosition < 0){
+                trainPosition = 0;
+                velocity = 0;
+            }
+            if(trainPosition > trackPath.length - 1){
+                trainPosition = trackPath.length -1;
+                velocity = 0;
+            }
+
+            // Handle headlight blinking
+            if(Math.abs(velocity) > 0.05){
+                if(now - lastBlinkTime > blinkInterval){
+                    headlightOn = !headlightOn;
+                    lastBlinkTime = now;
+                }
+            }
+            else{
+                headlightOn = false;
+            }
+
+            // Draw train
+            drawTrain(trainPosition, headlightOn);
+
+            requestAnimationFrame(draw);
+        }
+
+        // Start the animation
+        requestAnimationFrame(draw);
+
+        // Handle window resize
+        function onResize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            initBackground();
+            initTrack();
+            trainPosition = 0;
+            velocity = 0;
+            headlightOn = false;
+            lastBlinkTime = 0;
+        }
+
+        window.addEventListener('resize', onResize);
+    </script>
+</body>
+</html>
