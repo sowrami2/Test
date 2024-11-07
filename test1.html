@@ -1,0 +1,146 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>AI Adventure Game</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+        #gameOutput {
+            white-space: pre-wrap;
+            background-color: #f4f4f4;
+            padding: 10px;
+            height: 400px;
+            overflow-y: scroll;
+            border: 1px solid #ccc;
+        }
+        #score {
+            font-size: 20px;
+        }
+    </style>
+</head>
+<body>
+
+<h1>AI Adventure Game</h1>
+<div id="score">Score: 0</div>
+<div id="gameOutput"></div>
+
+<script>
+// Game Variables
+let score = 0;
+let gameOutput = document.getElementById('gameOutput');
+let scoreDisplay = document.getElementById('score');
+
+// Game World Definition
+class Room {
+    constructor(name, description) {
+        this.name = name;
+        this.description = description;
+        this.connections = {};
+        this.items = [];
+    }
+
+    connect(room, direction) {
+        this.connections[direction] = room;
+        room.connections[this.oppositeDirection(direction)] = this;
+    }
+
+    oppositeDirection(direction) {
+        const opposites = { north: 'south', south: 'north', east: 'west', west: 'east' };
+        return opposites[direction];
+    }
+}
+
+// Create Rooms
+let entrance = new Room("Entrance Hall", "You are at the grand entrance of the dungeon.");
+let corridor = new Room("Dark Corridor", "A dimly lit corridor stretches ahead.");
+let treasureRoom = new Room("Treasure Room", "A room glittering with gold and jewels!");
+let monsterRoom = new Room("Monster Lair", "A terrifying monster blocks your path!");
+
+// Connect Rooms
+entrance.connect(corridor, 'north');
+corridor.connect(treasureRoom, 'east');
+corridor.connect(monsterRoom, 'north');
+
+// Place Items
+treasureRoom.items.push("Gold Coin");
+monsterRoom.items.push("Sword");
+
+// AI Agent Definition
+class AIAgent {
+    constructor(currentRoom) {
+        this.currentRoom = currentRoom;
+        this.inventory = [];
+        this.visitedRooms = new Set();
+    }
+
+    decide() {
+        this.visitedRooms.add(this.currentRoom.name);
+        // Pick up items if any
+        if (this.currentRoom.items.length > 0) {
+            this.currentRoom.items.forEach(item => {
+                this.pickUp(item);
+            });
+            this.currentRoom.items = [];
+        }
+
+        // Decide next move
+        let unexploredDirections = Object.keys(this.currentRoom.connections).filter(direction => {
+            let room = this.currentRoom.connections[direction];
+            return !this.visitedRooms.has(room.name);
+        });
+
+        if (unexploredDirections.length > 0) {
+            let direction = unexploredDirections[Math.floor(Math.random() * unexploredDirections.length)];
+            this.move(direction);
+        } else {
+            this.log("AI has explored all accessible rooms.");
+            this.log("Game Over!");
+            return false; // Stop the game
+        }
+        return true; // Continue the game
+    }
+
+    move(direction) {
+        this.currentRoom = this.currentRoom.connections[direction];
+        this.log(`AI moves ${direction} to ${this.currentRoom.name}.`);
+        this.increaseScore();
+    }
+
+    pickUp(item) {
+        this.inventory.push(item);
+        this.log(`AI picks up a ${item}.`);
+        this.increaseScore();
+    }
+
+    log(message) {
+        gameOutput.innerText += message + '\n';
+        gameOutput.scrollTop = gameOutput.scrollHeight;
+    }
+
+    increaseScore() {
+        score += 1;
+        scoreDisplay.innerText = "Score: " + score;
+    }
+}
+
+// Game Loop
+function gameLoop() {
+    let ai = new AIAgent(entrance);
+    ai.log(`AI starts at ${ai.currentRoom.name}.`);
+    let interval = setInterval(() => {
+        if (!ai.decide()) {
+            clearInterval(interval);
+        }
+    }, 1000);
+}
+
+// Start the Game
+gameLoop();
+
+</script>
+
+</body>
+</html>
